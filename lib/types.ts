@@ -20,11 +20,17 @@ export type Arrangement = {
   createdAt: number;
 };
 
+export type ConfirmedArrangement = {
+  seats: Record<number, string>;
+  confirmedAt: number;
+};
+
 export type SeatingState = {
   layout: Layout | null;
   students: Student[];
   frontPriorityIds: string[];
   incompatiblePairs: IncompatiblePair[];
   current: Arrangement | null;
+  confirmed: ConfirmedArrangement | null;
   history: Arrangement[];
 };

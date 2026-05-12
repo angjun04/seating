@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type {
   Arrangement,
+  ConfirmedArrangement,
   IncompatiblePair,
   Layout,
   SeatingState,
@@ -20,6 +21,8 @@ type Actions = {
   removeIncompatiblePair: (index: number) => void;
   setCurrent: (a: Arrangement) => void;
   pushHistory: (a: Arrangement) => void;
+  confirmCurrent: () => void;
+  clearConfirmed: () => void;
   resetAll: () => void;
 };
 
@@ -29,8 +32,21 @@ const initial: SeatingState = {
   frontPriorityIds: [],
   incompatiblePairs: [],
   current: null,
+  confirmed: null,
   history: [],
 };
+
+function pruneSeats(
+  seats: Record<number, string>,
+  validIds: Set<string>,
+): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const k of Object.keys(seats)) {
+    const v = seats[Number(k)];
+    if (validIds.has(v)) out[Number(k)] = v;
+  }
+  return out;
+}
 
 export const useSeatingStore = create<SeatingState & Actions>()(
   persist(
@@ -40,12 +56,19 @@ export const useSeatingStore = create<SeatingState & Actions>()(
       setStudents: (students) =>
         set((s) => {
           const ids = new Set(students.map((x) => x.id));
+          const nextConfirmed: ConfirmedArrangement | null = s.confirmed
+            ? {
+                ...s.confirmed,
+                seats: pruneSeats(s.confirmed.seats, ids),
+              }
+            : null;
           return {
             students,
             frontPriorityIds: s.frontPriorityIds.filter((id) => ids.has(id)),
             incompatiblePairs: s.incompatiblePairs.filter(
               ([a, b]) => ids.has(a) && ids.has(b),
             ),
+            confirmed: nextConfirmed,
           };
         }),
       toggleFrontPriority: (id) =>
@@ -73,11 +96,29 @@ export const useSeatingStore = create<SeatingState & Actions>()(
         set((s) => ({
           history: [a, ...s.history].slice(0, HISTORY_LIMIT),
         })),
+      confirmCurrent: () =>
+        set((s) =>
+          s.current
+            ? {
+                confirmed: {
+                  seats: { ...s.current.seats },
+                  confirmedAt: Date.now(),
+                },
+              }
+            : s,
+        ),
+      clearConfirmed: () => set({ confirmed: null }),
       resetAll: () => set(initial),
     }),
     {
       name: "seating-store-v1",
       storage: createJSONStorage(() => localStorage),
+      // Shallow merge keeps new fields (e.g. `confirmed`) initialized for
+      // users hydrated from older persisted snapshots.
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<SeatingState>),
+      }),
     },
   ),
 );

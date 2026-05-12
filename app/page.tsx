@@ -25,6 +25,7 @@ export default function Home() {
     frontPriorityIds,
     incompatiblePairs,
     current,
+    confirmed,
     setLayout,
     setStudents,
     toggleFrontPriority,
@@ -32,6 +33,8 @@ export default function Home() {
     removeIncompatiblePair,
     setCurrent,
     pushHistory,
+    confirmCurrent,
+    clearConfirmed,
     resetAll,
   } = useSeatingStore();
 
@@ -69,6 +72,7 @@ export default function Home() {
       frontPriorityIds,
       incompatiblePairs,
       current,
+      { confirmedSeats: confirmed?.seats ?? null },
     );
     setCurrent(result.arrangement);
     pushHistory(result.arrangement);
@@ -76,12 +80,24 @@ export default function Home() {
       setWarning(
         "사이 안 좋은 쌍을 모두 떨어뜨리는 배치를 찾지 못해 가장 가까운 결과를 보여줍니다.",
       );
+    } else if (result.repeatSeatmates > 0) {
+      setWarning(
+        `지난달과 같은 짝꿍 ${result.repeatSeatmates}쌍이 남았어요. 학생/책상 수가 적으면 완전 회피가 어렵습니다.`,
+      );
     } else if (result.difference < 0.3 && current) {
       setWarning(
         `이전 배치와 ${Math.round(result.difference * 100)}%만 달라요. 학생/제약이 적으면 변동이 작을 수 있습니다.`,
       );
     }
   };
+
+  const confirmedSameAsCurrent =
+    !!current &&
+    !!confirmed &&
+    JSON.stringify(current.seats) === JSON.stringify(confirmed.seats);
+  const confirmedDate = confirmed
+    ? new Date(confirmed.confirmedAt).toLocaleDateString("ko-KR")
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -175,9 +191,33 @@ export default function Home() {
                 {warning}
               </div>
             )}
+            {confirmed && (
+              <div className="text-sm bg-emerald-50 border border-emerald-200 rounded p-3 flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-emerald-800">
+                  <span className="font-medium">
+                    이번 달 자리 확정됨{confirmedDate ? ` (${confirmedDate})` : ""}
+                  </span>
+                  <span className="text-emerald-700">
+                    {" "}
+                    — 다음 배치는 같은 자리/짝꿍을 피합니다.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("확정을 해제할까요? 다음 배치에 참고하지 않습니다.")) {
+                      clearConfirmed();
+                    }
+                  }}
+                  className="text-xs text-emerald-700 hover:text-emerald-900 underline"
+                >
+                  확정 해제
+                </button>
+              </div>
+            )}
             {layout && current && (
               <>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setEditing((v) => !v)}
@@ -188,6 +228,31 @@ export default function Home() {
                     }`}
                   >
                     {editing ? "편집 완료" : "자리 직접 편집"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirmedSameAsCurrent) return;
+                      if (
+                        confirmed &&
+                        !confirm("이전 확정 배치를 덮어쓸까요?")
+                      ) {
+                        return;
+                      }
+                      confirmCurrent();
+                      setEditing(false);
+                    }}
+                    disabled={confirmedSameAsCurrent}
+                    className="px-3 py-1.5 rounded text-sm border bg-white border-emerald-400 text-emerald-700 hover:bg-emerald-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-300"
+                    title={
+                      confirmedSameAsCurrent
+                        ? "현재 배치가 이미 확정된 상태입니다."
+                        : "이 배치를 이번 달 배치로 확정합니다."
+                    }
+                  >
+                    {confirmedSameAsCurrent
+                      ? "이미 확정됨"
+                      : "이번 달 자리 확정"}
                   </button>
                   {editing && (
                     <span className="text-xs text-gray-500">
