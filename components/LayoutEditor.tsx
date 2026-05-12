@@ -23,6 +23,20 @@ function makeCells(rows: number, cols: number, prev?: Layout): CellType[] {
   return out;
 }
 
+function isColumnAisle(layout: Layout, c: number): boolean {
+  for (let r = 0; r < layout.rows; r++) {
+    if (layout.cells[r * layout.cols + c] !== "empty") return false;
+  }
+  return true;
+}
+
+function isRowAisle(layout: Layout, r: number): boolean {
+  for (let c = 0; c < layout.cols; c++) {
+    if (layout.cells[r * layout.cols + c] !== "empty") return false;
+  }
+  return true;
+}
+
 export function LayoutEditor({ value, onChange }: Props) {
   const [hoverDim, setHoverDim] = useState<{ r: number; c: number } | null>(
     null,
@@ -33,6 +47,24 @@ export function LayoutEditor({ value, onChange }: Props) {
   const toggleCell = (idx: number) => {
     const next = layout.cells.slice();
     next[idx] = next[idx] === "desk" ? "empty" : "desk";
+    onChange({ ...layout, cells: next });
+  };
+
+  const toggleColumnAisle = (c: number) => {
+    const next = layout.cells.slice();
+    const target: CellType = isColumnAisle(layout, c) ? "desk" : "empty";
+    for (let r = 0; r < layout.rows; r++) {
+      next[r * layout.cols + c] = target;
+    }
+    onChange({ ...layout, cells: next });
+  };
+
+  const toggleRowAisle = (r: number) => {
+    const next = layout.cells.slice();
+    const target: CellType = isRowAisle(layout, r) ? "desk" : "empty";
+    for (let c = 0; c < layout.cols; c++) {
+      next[r * layout.cols + c] = target;
+    }
     onChange({ ...layout, cells: next });
   };
 
@@ -85,27 +117,51 @@ export function LayoutEditor({ value, onChange }: Props) {
       {hasLayout && (
         <div>
           <div className="text-sm font-medium mb-2">
-            2) 책상이 없는 칸은 클릭해서 빈 칸으로 (앞쪽이 위)
+            2) 책상이 없는 칸은 클릭, 행/열 머리는 통째로 복도 토글
           </div>
           <div className="text-xs text-gray-500 mb-2">↑ 교실 앞 (칠판)</div>
-          <div
-            className="inline-grid gap-1 p-2 border border-gray-300 bg-gray-50"
-            style={{ gridTemplateColumns: `repeat(${layout.cols}, 2.5rem)` }}
-          >
-            {layout.cells.map((cell, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => toggleCell(idx)}
-                className={`w-10 h-10 border text-xs ${
-                  cell === "desk"
-                    ? "bg-white border-gray-400"
-                    : "bg-gray-200 border-dashed border-gray-300 text-gray-400"
-                }`}
-              >
-                {cell === "desk" ? "🪑" : "·"}
-              </button>
-            ))}
+          <div className="inline-block">
+            <div
+              className="grid gap-1 p-2 border border-gray-300 bg-gray-50"
+              style={{
+                gridTemplateColumns: `2rem repeat(${layout.cols}, 2.5rem)`,
+                gridTemplateRows: `1.5rem repeat(${layout.rows}, 2.5rem)`,
+              }}
+            >
+              <div />
+              {Array.from({ length: layout.cols }).map((_, c) => {
+                const aisle = isColumnAisle(layout, c);
+                return (
+                  <button
+                    key={`col-${c}`}
+                    type="button"
+                    onClick={() => toggleColumnAisle(c)}
+                    title={
+                      aisle
+                        ? "이 열 전체 복도 — 클릭해 책상으로"
+                        : "이 열 전체를 복도로"
+                    }
+                    className={`h-6 text-[10px] rounded border ${
+                      aisle
+                        ? "bg-amber-100 border-amber-400 text-amber-700"
+                        : "bg-white border-gray-300 text-gray-400 hover:bg-gray-100"
+                    }`}
+                  >
+                    {aisle ? "복도" : "↓"}
+                  </button>
+                );
+              })}
+
+              {Array.from({ length: layout.rows }).map((_, r) => (
+                <RowGroup
+                  key={`row-${r}`}
+                  r={r}
+                  layout={layout}
+                  onToggleRow={toggleRowAisle}
+                  onToggleCell={toggleCell}
+                />
+              ))}
+            </div>
           </div>
           <div className="text-xs text-gray-600 mt-2">
             책상: {layout.cells.filter((c) => c === "desk").length}개
@@ -113,5 +169,55 @@ export function LayoutEditor({ value, onChange }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+function RowGroup({
+  r,
+  layout,
+  onToggleRow,
+  onToggleCell,
+}: {
+  r: number;
+  layout: Layout;
+  onToggleRow: (r: number) => void;
+  onToggleCell: (idx: number) => void;
+}) {
+  const aisle = isRowAisle(layout, r);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onToggleRow(r)}
+        title={
+          aisle ? "이 행 전체 복도 — 클릭해 책상으로" : "이 행 전체를 복도로"
+        }
+        className={`w-8 text-[10px] rounded border ${
+          aisle
+            ? "bg-amber-100 border-amber-400 text-amber-700"
+            : "bg-white border-gray-300 text-gray-400 hover:bg-gray-100"
+        }`}
+      >
+        {aisle ? "복도" : "→"}
+      </button>
+      {Array.from({ length: layout.cols }).map((_, c) => {
+        const idx = r * layout.cols + c;
+        const cell = layout.cells[idx];
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onToggleCell(idx)}
+            className={`w-10 h-10 border text-xs ${
+              cell === "desk"
+                ? "bg-white border-gray-400"
+                : "bg-gray-200 border-dashed border-gray-300 text-gray-400"
+            }`}
+          >
+            {cell === "desk" ? "🪑" : "·"}
+          </button>
+        );
+      })}
+    </>
   );
 }
