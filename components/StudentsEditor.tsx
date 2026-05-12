@@ -37,7 +37,7 @@ export function StudentsEditor({ value, onChange }: Props) {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 max-w-xl mx-auto">
       <div className="text-sm font-medium">
         학생 이름 (줄바꿈 또는 쉼표로 구분)
       </div>

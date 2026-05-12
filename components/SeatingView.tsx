@@ -54,20 +54,17 @@ export function SeatingView({
     setSelected(null);
   };
 
+  const boardWidth = `${layout.cols * 5 + (layout.cols - 1) * 0.5 + 1.5}rem`;
   return (
-    <div>
-      <div className="text-center text-xs text-gray-500 mb-1">
-        ↑ 교실 앞 (칠판)
-      </div>
-      {editable && (
-        <div className="text-center text-xs text-blue-600 mb-2">
-          {selected === null
-            ? "옮길 자리를 클릭하세요."
-            : "바꿀 자리를 클릭하면 두 자리가 교환됩니다."}
-        </div>
-      )}
+    <div className="flex flex-col items-center">
       <div
-        className="inline-grid gap-2 p-3 bg-gray-50 border border-gray-300 rounded"
+        className="bg-slate-800 text-slate-100 text-xs tracking-wide text-center rounded-md px-4 py-1.5 mb-2"
+        style={{ minWidth: boardWidth }}
+      >
+        칠판 (교실 앞)
+      </div>
+      <div
+        className="inline-grid gap-2 p-3 bg-gray-50 border border-gray-300 rounded-md"
         style={{ gridTemplateColumns: `repeat(${layout.cols}, 5rem)` }}
       >
         {layout.cells.map((cell, idx) => {
@@ -107,6 +104,13 @@ export function SeatingView({
           );
         })}
       </div>
+      {editable && (
+        <div className="text-xs text-blue-600 mt-2">
+          {selected === null
+            ? "옮길 자리를 클릭하세요."
+            : "바꿀 자리를 클릭하면 두 자리가 교환됩니다."}
+        </div>
+      )}
     </div>
   );
 }

@@ -102,7 +102,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-lg font-semibold">교실 자리 배치</h1>
           <button
             type="button"
@@ -114,7 +114,7 @@ export default function Home() {
             전체 초기화
           </button>
         </div>
-        <nav className="max-w-5xl mx-auto px-4 flex gap-1 text-sm">
+        <nav className="max-w-4xl mx-auto px-4 flex gap-1 text-sm">
           {[
             { id: "arrange", label: "배치" },
             { id: "layout", label: "책상 배치" },
@@ -137,15 +137,15 @@ export default function Home() {
         </nav>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6">
+      <main className="max-w-4xl mx-auto px-4 py-6">
         {tab === "arrange" && (
           <div className="space-y-4">
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center justify-center gap-4 flex-wrap">
               <button
                 type="button"
                 onClick={onGenerate}
                 disabled={!canArrange}
-                className="px-4 py-2 bg-blue-600 text-white rounded font-medium disabled:bg-gray-300"
+                className="px-5 py-2 bg-blue-600 text-white rounded-md font-medium shadow-sm hover:bg-blue-700 disabled:bg-gray-300 disabled:shadow-none transition"
               >
                 새 배치 생성
               </button>
@@ -217,7 +217,7 @@ export default function Home() {
             )}
             {layout && current && (
               <>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center justify-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setEditing((v) => !v)}

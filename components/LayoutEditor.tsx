@@ -75,54 +75,56 @@ export function LayoutEditor({ value, onChange }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <div className="text-sm font-medium mb-2">
+        <div className="text-sm font-medium mb-2 text-center">
           1) 행 × 열 선택 (PPT 표처럼 호버 후 클릭)
         </div>
-        <div
-          className="inline-block border border-gray-300 p-1 bg-white"
-          onMouseLeave={() => setHoverDim(null)}
-        >
-          {Array.from({ length: MAX_ROWS }).map((_, r) => (
-            <div key={r} className="flex">
-              {Array.from({ length: MAX_COLS }).map((_, c) => {
-                const within =
-                  hoverDim !== null && r <= hoverDim.r && c <= hoverDim.c;
-                return (
-                  <button
-                    key={c}
-                    type="button"
-                    onMouseEnter={() => setHoverDim({ r, c })}
-                    onClick={() => pickDims(r + 1, c + 1)}
-                    className={`w-5 h-5 m-0.5 border ${
-                      within
-                        ? "bg-blue-400 border-blue-600"
-                        : "bg-gray-50 border-gray-300"
-                    }`}
-                    aria-label={`${r + 1}행 ${c + 1}열`}
-                  />
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        <div className="text-xs text-gray-600 mt-1">
-          {hoverDim
-            ? `${hoverDim.r + 1} × ${hoverDim.c + 1}`
-            : hasLayout
-              ? `현재: ${layout.rows} × ${layout.cols}`
-              : "표 크기를 선택하세요"}
+        <div className="flex flex-col items-center">
+          <div
+            className="inline-block border border-gray-300 rounded p-1 bg-white"
+            onMouseLeave={() => setHoverDim(null)}
+          >
+            {Array.from({ length: MAX_ROWS }).map((_, r) => (
+              <div key={r} className="flex">
+                {Array.from({ length: MAX_COLS }).map((_, c) => {
+                  const within =
+                    hoverDim !== null && r <= hoverDim.r && c <= hoverDim.c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onMouseEnter={() => setHoverDim({ r, c })}
+                      onClick={() => pickDims(r + 1, c + 1)}
+                      className={`w-5 h-5 m-0.5 border ${
+                        within
+                          ? "bg-blue-400 border-blue-600"
+                          : "bg-gray-50 border-gray-300"
+                      }`}
+                      aria-label={`${r + 1}행 ${c + 1}열`}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="text-xs text-gray-600 mt-1">
+            {hoverDim
+              ? `${hoverDim.r + 1} × ${hoverDim.c + 1}`
+              : hasLayout
+                ? `현재: ${layout.rows} × ${layout.cols}`
+                : "표 크기를 선택하세요"}
+          </div>
         </div>
       </div>
 
       {hasLayout && (
         <div>
-          <div className="text-sm font-medium mb-2">
+          <div className="text-sm font-medium mb-2 text-center">
             2) 책상이 없는 칸은 클릭, 행/열 머리는 통째로 복도 토글
           </div>
-          <div className="text-xs text-gray-500 mb-2">↑ 교실 앞 (칠판)</div>
-          <div className="inline-block">
+          <div className="flex flex-col items-center">
+            <div className="text-xs text-gray-500 mb-2">↑ 교실 앞 (칠판)</div>
             <div
-              className="grid gap-1 p-2 border border-gray-300 bg-gray-50"
+              className="grid gap-1 p-2 border border-gray-300 rounded bg-gray-50"
               style={{
                 gridTemplateColumns: `2rem repeat(${layout.cols}, 2.5rem)`,
                 gridTemplateRows: `1.5rem repeat(${layout.rows}, 2.5rem)`,
@@ -162,9 +164,9 @@ export function LayoutEditor({ value, onChange }: Props) {
                 />
               ))}
             </div>
-          </div>
-          <div className="text-xs text-gray-600 mt-2">
-            책상: {layout.cells.filter((c) => c === "desk").length}개
+            <div className="text-xs text-gray-600 mt-2">
+              책상: {layout.cells.filter((c) => c === "desk").length}개
+            </div>
           </div>
         </div>
       )}
