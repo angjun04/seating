@@ -19,6 +19,10 @@ export type Layout = {
   cols: number;
   // row-major flattened cells; length === rows*cols
   cells: CellType[];
+  // Parallel to cells; 0 = no group, 1..numGroups = group id.
+  // Optional for layouts persisted before this feature existed.
+  groups?: number[];
+  numGroups?: number;
 };
 
 export type IncompatiblePair = [string, string];
@@ -34,6 +38,18 @@ export type ConfirmedArrangement = {
   confirmedAt: number;
 };
 
+export type SeatmatePolicy = "opposite" | "same" | "random";
+export const SEATMATE_POLICIES: SeatmatePolicy[] = [
+  "opposite",
+  "same",
+  "random",
+];
+export const SEATMATE_POLICY_LABEL: Record<SeatmatePolicy, string> = {
+  opposite: "이성 짝꿍",
+  same: "동성 짝꿍",
+  random: "랜덤",
+};
+
 export type SeatingState = {
   layout: Layout | null;
   students: Student[];
@@ -42,4 +58,5 @@ export type SeatingState = {
   current: Arrangement | null;
   confirmed: ConfirmedArrangement | null;
   history: Arrangement[];
+  seatmatePolicy: SeatmatePolicy;
 };

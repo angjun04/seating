@@ -1,4 +1,10 @@
-import type { Arrangement, IncompatiblePair, Layout, Student } from "./types";
+import type {
+  Arrangement,
+  IncompatiblePair,
+  Layout,
+  SeatmatePolicy,
+  Student,
+} from "./types";
 
 // Map students to desks in row-major order (front-left first).
 // Used to seed `current` from "last month's arrangement" when a teacher
@@ -79,6 +85,48 @@ function validIncompatible(
   return true;
 }
 
+// "짝꿍" = horizontally adjacent occupied desks within the same row.
+// Returns each pair as [leftStudentId, rightStudentId].
+function seatmatePairs(
+  seats: Record<number, string>,
+  layout: Layout,
+): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const { rows, cols, cells } = layout;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols - 1; c++) {
+      const li = r * cols + c;
+      const ri = li + 1;
+      if (cells[li] !== "desk" || cells[ri] !== "desk") continue;
+      const a = seats[li];
+      const b = seats[ri];
+      if (!a || !b) continue;
+      out.push([a, b]);
+    }
+  }
+  return out;
+}
+
+function countSeatmateViolations(
+  seats: Record<number, string>,
+  layout: Layout,
+  students: Student[],
+  policy: SeatmatePolicy,
+): { lowLow: number; genderMismatch: number } {
+  const byId = new Map(students.map((s) => [s.id, s]));
+  let lowLow = 0;
+  let genderMismatch = 0;
+  for (const [a, b] of seatmatePairs(seats, layout)) {
+    const sa = byId.get(a);
+    const sb = byId.get(b);
+    if (!sa || !sb) continue;
+    if (sa.level === "하" && sb.level === "하") lowLow++;
+    if (policy === "same" && sa.gender !== sb.gender) genderMismatch++;
+    else if (policy === "opposite" && sa.gender === sb.gender) genderMismatch++;
+  }
+  return { lowLow, genderMismatch };
+}
+
 function differenceRatio(
   next: Record<number, string>,
   prev: Record<number, string> | null,
@@ -97,6 +145,7 @@ export type GenerateOptions = {
   // Last month's confirmed arrangement, used to avoid repeating seat
   // positions AND seatmate (adjacent) pairings.
   confirmedSeats?: Record<number, string> | null;
+  seatmatePolicy?: SeatmatePolicy; // default "random"
 };
 
 export type GenerateResult = {
@@ -104,11 +153,18 @@ export type GenerateResult = {
   satisfiesIncompatible: boolean;
   difference: number;
   repeatSeatmates: number;
+  lowLowPairs: number;
+  genderMismatches: number;
 };
 
 function isBetter(a: GenerateResult, b: GenerateResult): boolean {
   if (a.satisfiesIncompatible !== b.satisfiesIncompatible) {
     return a.satisfiesIncompatible;
+  }
+  // 하-하 짝꿍은 절대 금지 — 다른 무엇보다 우선해서 줄인다.
+  if (a.lowLowPairs !== b.lowLowPairs) return a.lowLowPairs < b.lowLowPairs;
+  if (a.genderMismatches !== b.genderMismatches) {
+    return a.genderMismatches < b.genderMismatches;
   }
   if (a.repeatSeatmates !== b.repeatSeatmates) {
     return a.repeatSeatmates < b.repeatSeatmates;
@@ -127,6 +183,7 @@ export function generateArrangement(
   const minDifference = opts.minDifference ?? 0.5;
   const maxAttempts = opts.maxAttempts ?? 500;
   const confirmedSeats = opts.confirmedSeats ?? null;
+  const seatmatePolicy: SeatmatePolicy = opts.seatmatePolicy ?? "random";
   const { rows, cols, cells } = layout;
 
   const deskIndices: number[] = [];
@@ -201,15 +258,31 @@ export function generateArrangement(
       const newPairs = computeNeighborPairs(seats, rows, cols);
       for (const p of newPairs) if (confirmedPairs.has(p)) repeats++;
     }
+    const { lowLow, genderMismatch } = countSeatmateViolations(
+      seats,
+      layout,
+      students,
+      seatmatePolicy,
+    );
 
     const candidate: GenerateResult = {
       arrangement: { seats, createdAt: Date.now() },
       satisfiesIncompatible: ok,
       difference: diff,
       repeatSeatmates: repeats,
+      lowLowPairs: lowLow,
+      genderMismatches: genderMismatch,
     };
 
-    if (ok && diff >= minDifference && repeats === 0) return candidate;
+    if (
+      ok &&
+      diff >= minDifference &&
+      repeats === 0 &&
+      lowLow === 0 &&
+      genderMismatch === 0
+    ) {
+      return candidate;
+    }
 
     if (!best || isBetter(candidate, best)) best = candidate;
   }
@@ -220,6 +293,8 @@ export function generateArrangement(
       satisfiesIncompatible: incompatible.length === 0,
       difference: 0,
       repeatSeatmates: 0,
+      lowLowPairs: 0,
+      genderMismatches: 0,
     }
   );
 }

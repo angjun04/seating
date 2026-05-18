@@ -8,6 +8,7 @@ import type {
   IncompatiblePair,
   Layout,
   SeatingState,
+  SeatmatePolicy,
   Student,
 } from "./types";
 
@@ -23,6 +24,7 @@ type Actions = {
   pushHistory: (a: Arrangement) => void;
   confirmCurrent: () => void;
   clearConfirmed: () => void;
+  setSeatmatePolicy: (p: SeatmatePolicy) => void;
   resetAll: () => void;
 };
 
@@ -34,6 +36,7 @@ const initial: SeatingState = {
   current: null,
   confirmed: null,
   history: [],
+  seatmatePolicy: "random",
 };
 
 function pruneSeats(
@@ -108,6 +111,7 @@ export const useSeatingStore = create<SeatingState & Actions>()(
             : s,
         ),
       clearConfirmed: () => set({ confirmed: null }),
+      setSeatmatePolicy: (p) => set({ seatmatePolicy: p }),
       resetAll: () => set(initial),
     }),
     {
@@ -122,7 +126,12 @@ export const useSeatingStore = create<SeatingState & Actions>()(
           gender: s.gender ?? "M",
           level: s.level ?? "상",
         }));
-        return { ...current, ...p, students };
+        return {
+          ...current,
+          ...p,
+          students,
+          seatmatePolicy: p.seatmatePolicy ?? current.seatmatePolicy,
+        };
       },
     },
   ),

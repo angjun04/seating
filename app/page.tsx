@@ -10,6 +10,10 @@ import { LayoutEditor } from "@/components/LayoutEditor";
 import { StudentsEditor } from "@/components/StudentsEditor";
 import { ConstraintsEditor } from "@/components/ConstraintsEditor";
 import { SeatingView } from "@/components/SeatingView";
+import {
+  SEATMATE_POLICIES,
+  SEATMATE_POLICY_LABEL,
+} from "@/lib/types";
 
 type Tab = "arrange" | "layout" | "students" | "constraints";
 
@@ -26,6 +30,7 @@ export default function Home() {
     incompatiblePairs,
     current,
     confirmed,
+    seatmatePolicy,
     setLayout,
     setStudents,
     toggleFrontPriority,
@@ -35,6 +40,7 @@ export default function Home() {
     pushHistory,
     confirmCurrent,
     clearConfirmed,
+    setSeatmatePolicy,
     resetAll,
   } = useSeatingStore();
 
@@ -72,13 +78,26 @@ export default function Home() {
       frontPriorityIds,
       incompatiblePairs,
       current,
-      { confirmedSeats: confirmed?.seats ?? null },
+      {
+        confirmedSeats: confirmed?.seats ?? null,
+        seatmatePolicy,
+      },
     );
     setCurrent(result.arrangement);
     pushHistory(result.arrangement);
     if (!result.satisfiesIncompatible) {
       setWarning(
         "사이 안 좋은 쌍을 모두 떨어뜨리는 배치를 찾지 못해 가장 가까운 결과를 보여줍니다.",
+      );
+    } else if (result.lowLowPairs > 0) {
+      setWarning(
+        `성적 '하' 학생끼리 짝꿍이 된 자리가 ${result.lowLowPairs}쌍 남았어요. '하' 학생 수가 많으면 완전 회피가 어렵습니다.`,
+      );
+    } else if (result.genderMismatches > 0) {
+      setWarning(
+        seatmatePolicy === "same"
+          ? `동성 짝꿍을 맞추지 못한 자리가 ${result.genderMismatches}쌍 있어요.`
+          : `이성 짝꿍을 맞추지 못한 자리가 ${result.genderMismatches}쌍 있어요.`,
       );
     } else if (result.repeatSeatmates > 0) {
       setWarning(
@@ -152,6 +171,34 @@ export default function Home() {
               <div className="text-sm text-gray-600">
                 학생 {students.length}명 / 책상 {deskCount}석
               </div>
+            </div>
+            <div className="flex items-center justify-center gap-2 flex-wrap text-sm">
+              <span className="text-gray-600">짝꿍 규칙:</span>
+              <div
+                role="radiogroup"
+                aria-label="짝꿍 규칙"
+                className="inline-flex rounded-md border border-gray-300 overflow-hidden"
+              >
+                {SEATMATE_POLICIES.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    role="radio"
+                    aria-checked={seatmatePolicy === p}
+                    onClick={() => setSeatmatePolicy(p)}
+                    className={`px-3 py-1 text-sm border-l first:border-l-0 border-gray-300 ${
+                      seatmatePolicy === p
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {SEATMATE_POLICY_LABEL[p]}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-gray-500">
+                · 성적 '하' 끼리는 짝꿍이 되지 않게 합니다
+              </span>
             </div>
             {!canArrange && (
               <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
