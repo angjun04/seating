@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Arrangement, Layout, Level, Student } from "@/lib/types";
+import { groupColor } from "./LayoutEditor";
 
 type Props = {
   layout: Layout;
@@ -136,6 +137,8 @@ export function SeatingView({
           const isSelected = editable && selected === idx;
           const isDragSrc = editable && dragSrc === idx;
           const isDragOver = editable && dragOver === idx && dragSrc !== idx;
+          const g = layout.groups?.[idx] ?? 0;
+          const gColor = g > 0 ? groupColor(g) : null;
           const genderBg = student
             ? student.gender === "F"
               ? "bg-rose-50"
@@ -176,6 +179,15 @@ export function SeatingView({
                     : undefined
               }
             >
+              {gColor && (
+                <span
+                  className={`absolute top-1 left-1 text-[10px] font-bold px-1 rounded ${gColor.bg} ${gColor.text}`}
+                  aria-label={`모둠 ${g}`}
+                  title={`모둠 ${g}`}
+                >
+                  {g}
+                </span>
+              )}
               {student ? (
                 <>
                   <span

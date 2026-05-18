@@ -2,6 +2,7 @@ import type {
   Arrangement,
   IncompatiblePair,
   Layout,
+  Level,
   SeatmatePolicy,
   Student,
 } from "./types";
@@ -139,6 +140,84 @@ function differenceRatio(
   return changed / keys.length;
 }
 
+function groupMemberPairs(
+  seats: Record<number, string>,
+  groups: number[],
+): Set<string> {
+  const byGroup = new Map<number, string[]>();
+  for (const k of Object.keys(seats)) {
+    const idx = Number(k);
+    const g = groups[idx] ?? 0;
+    if (!g) continue;
+    const sid = seats[idx];
+    if (!sid) continue;
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g)!.push(sid);
+  }
+  const out = new Set<string>();
+  for (const members of byGroup.values()) {
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) {
+        out.add(pairKey(members[i], members[j]));
+      }
+    }
+  }
+  return out;
+}
+
+function computeGroupImbalance(
+  seats: Record<number, string>,
+  groups: number[],
+  students: Student[],
+): number {
+  const levelById = new Map<string, Level>(students.map((s) => [s.id, s.level]));
+  const counts = new Map<number, Record<Level, number>>();
+  const sizes = new Map<number, number>();
+  for (const k of Object.keys(seats)) {
+    const idx = Number(k);
+    const g = groups[idx] ?? 0;
+    if (!g) continue;
+    const lvl = levelById.get(seats[idx]);
+    if (!lvl) continue;
+    if (!counts.has(g)) {
+      counts.set(g, { 상: 0, 중: 0, 하: 0 });
+      sizes.set(g, 0);
+    }
+    counts.get(g)![lvl]++;
+    sizes.set(g, (sizes.get(g) ?? 0) + 1);
+  }
+  let total = 0;
+  for (const [g, c] of counts) {
+    const n = sizes.get(g) ?? 0;
+    if (n === 0) continue;
+    const ideal = n / 3;
+    total += (c.상 - ideal) ** 2 + (c.중 - ideal) ** 2 + (c.하 - ideal) ** 2;
+  }
+  return total;
+}
+
+function countBadPairsInGroup(
+  seats: Record<number, string>,
+  groups: number[],
+  pairs: IncompatiblePair[],
+): number {
+  if (pairs.length === 0) return 0;
+  const groupOf = new Map<string, number>();
+  for (const k of Object.keys(seats)) {
+    const idx = Number(k);
+    const g = groups[idx] ?? 0;
+    if (!g) continue;
+    groupOf.set(seats[idx], g);
+  }
+  let count = 0;
+  for (const [a, b] of pairs) {
+    const ga = groupOf.get(a);
+    const gb = groupOf.get(b);
+    if (ga !== undefined && ga === gb) count++;
+  }
+  return count;
+}
+
 export type GenerateOptions = {
   minDifference?: number; // 0..1; default 0.5
   maxAttempts?: number; // default 500
@@ -155,6 +234,9 @@ export type GenerateResult = {
   repeatSeatmates: number;
   lowLowPairs: number;
   genderMismatches: number;
+  repeatGroupmates: number;
+  badPairsInGroup: number;
+  groupImbalance: number;
 };
 
 function isBetter(a: GenerateResult, b: GenerateResult): boolean {
@@ -163,11 +245,21 @@ function isBetter(a: GenerateResult, b: GenerateResult): boolean {
   }
   // 하-하 짝꿍은 절대 금지 — 다른 무엇보다 우선해서 줄인다.
   if (a.lowLowPairs !== b.lowLowPairs) return a.lowLowPairs < b.lowLowPairs;
+  // 사이 안 좋은 쌍이 같은 모둠 — 사용자가 명시한 분리 요구
+  if (a.badPairsInGroup !== b.badPairsInGroup) {
+    return a.badPairsInGroup < b.badPairsInGroup;
+  }
   if (a.genderMismatches !== b.genderMismatches) {
     return a.genderMismatches < b.genderMismatches;
   }
   if (a.repeatSeatmates !== b.repeatSeatmates) {
     return a.repeatSeatmates < b.repeatSeatmates;
+  }
+  if (a.repeatGroupmates !== b.repeatGroupmates) {
+    return a.repeatGroupmates < b.repeatGroupmates;
+  }
+  if (a.groupImbalance !== b.groupImbalance) {
+    return a.groupImbalance < b.groupImbalance;
   }
   return a.difference > b.difference;
 }
@@ -185,6 +277,9 @@ export function generateArrangement(
   const confirmedSeats = opts.confirmedSeats ?? null;
   const seatmatePolicy: SeatmatePolicy = opts.seatmatePolicy ?? "random";
   const { rows, cols, cells } = layout;
+  const groups = layout.groups ?? new Array(cells.length).fill(0);
+  const numGroups = layout.numGroups ?? 0;
+  const hasGroups = numGroups > 0;
 
   const deskIndices: number[] = [];
   for (let i = 0; i < cells.length; i++) {
@@ -229,6 +324,10 @@ export function generateArrangement(
   const confirmedPairs = confirmedSeats
     ? computeNeighborPairs(confirmedSeats, rows, cols)
     : null;
+  // Previous group memberships — applies CURRENT layout's group definitions
+  // to LAST month's seats so re-drawing groups still works as a comparison.
+  const confirmedGroupPairs =
+    confirmedSeats && hasGroups ? groupMemberPairs(confirmedSeats, groups) : null;
 
   let best: GenerateResult | null = null;
 
@@ -264,6 +363,17 @@ export function generateArrangement(
       students,
       seatmatePolicy,
     );
+    let repeatGroup = 0;
+    if (confirmedGroupPairs && confirmedGroupPairs.size > 0) {
+      const newGroupPairs = groupMemberPairs(seats, groups);
+      for (const p of newGroupPairs) if (confirmedGroupPairs.has(p)) repeatGroup++;
+    }
+    const badInGroup = hasGroups
+      ? countBadPairsInGroup(seats, groups, incompatible)
+      : 0;
+    const imbalance = hasGroups
+      ? computeGroupImbalance(seats, groups, students)
+      : 0;
 
     const candidate: GenerateResult = {
       arrangement: { seats, createdAt: Date.now() },
@@ -272,6 +382,9 @@ export function generateArrangement(
       repeatSeatmates: repeats,
       lowLowPairs: lowLow,
       genderMismatches: genderMismatch,
+      repeatGroupmates: repeatGroup,
+      badPairsInGroup: badInGroup,
+      groupImbalance: imbalance,
     };
 
     if (
@@ -279,7 +392,10 @@ export function generateArrangement(
       diff >= minDifference &&
       repeats === 0 &&
       lowLow === 0 &&
-      genderMismatch === 0
+      genderMismatch === 0 &&
+      badInGroup === 0 &&
+      repeatGroup === 0 &&
+      imbalance <= 1
     ) {
       return candidate;
     }
@@ -295,6 +411,9 @@ export function generateArrangement(
       repeatSeatmates: 0,
       lowLowPairs: 0,
       genderMismatches: 0,
+      repeatGroupmates: 0,
+      badPairsInGroup: 0,
+      groupImbalance: 0,
     }
   );
 }

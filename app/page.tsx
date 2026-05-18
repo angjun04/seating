@@ -99,9 +99,17 @@ export default function Home() {
           ? `동성 짝꿍을 맞추지 못한 자리가 ${result.genderMismatches}쌍 있어요.`
           : `이성 짝꿍을 맞추지 못한 자리가 ${result.genderMismatches}쌍 있어요.`,
       );
+    } else if (result.badPairsInGroup > 0) {
+      setWarning(
+        `사이 안 좋은 쌍이 같은 모둠에 ${result.badPairsInGroup}쌍 남았어요. 모둠 자리 수가 부족하면 완전 분리가 어렵습니다.`,
+      );
     } else if (result.repeatSeatmates > 0) {
       setWarning(
         `지난달과 같은 짝꿍 ${result.repeatSeatmates}쌍이 남았어요. 학생/책상 수가 적으면 완전 회피가 어렵습니다.`,
+      );
+    } else if (result.repeatGroupmates > 0) {
+      setWarning(
+        `지난달과 같은 모둠 멤버 ${result.repeatGroupmates}쌍이 남았어요. 모둠 구성을 더 다양화하려면 학생 수나 모둠 크기를 조정해보세요.`,
       );
     } else if (result.difference < 0.3 && current) {
       setWarning(
