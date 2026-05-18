@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { Student } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react";
+import {
+  GENDERS,
+  GENDER_LABEL,
+  LEVELS,
+  type Gender,
+  type Level,
+  type Student,
+} from "@/lib/types";
 
 type Props = {
   value: Student[];
@@ -12,45 +19,181 @@ function makeId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function parseNames(text: string): string[] {
+type Parsed = { name: string; gender: Gender; level: Level };
+
+function parseToken(token: string): { gender?: Gender; level?: Level } {
+  const t = token.trim();
+  if (t === "남" || t === "M" || t === "m") return { gender: "M" };
+  if (t === "여" || t === "F" || t === "f") return { gender: "F" };
+  if (t === "상" || t === "중" || t === "하") return { level: t as Level };
+  return {};
+}
+
+function parseLine(line: string): Parsed | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(/\s+/);
+  const name = parts[0];
+  if (!name) return null;
+  let gender: Gender = "M";
+  let level: Level = "상";
+  for (const p of parts.slice(1)) {
+    const r = parseToken(p);
+    if (r.gender) gender = r.gender;
+    if (r.level) level = r.level;
+  }
+  return { name, gender, level };
+}
+
+function parseStudents(text: string): Parsed[] {
   return text
     .split(/[\n,]+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+    .map(parseLine)
+    .filter((x): x is Parsed => x !== null);
+}
+
+function studentsToText(students: Student[]): string {
+  return students
+    .map((s) => `${s.name} ${GENDER_LABEL[s.gender]} ${s.level}`)
+    .join("\n");
+}
+
+function cycle<T>(arr: readonly T[], current: T, step: 1 | -1): T {
+  const i = arr.indexOf(current);
+  const len = arr.length;
+  return arr[(i + step + len) % len];
 }
 
 export function StudentsEditor({ value, onChange }: Props) {
-  const [text, setText] = useState(value.map((s) => s.name).join("\n"));
+  const [text, setText] = useState(() => studentsToText(value));
 
   useEffect(() => {
-    setText(value.map((s) => s.name).join("\n"));
+    setText(studentsToText(value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value.length]);
+  }, [value]);
 
-  const commit = (raw: string) => {
-    const names = parseNames(raw);
+  const parsedCount = useMemo(() => parseStudents(text).length, [text]);
+
+  const commitText = (raw: string) => {
+    const parsed = parseStudents(raw);
     const byName = new Map(value.map((s) => [s.name, s]));
-    const next: Student[] = names.map(
-      (name) => byName.get(name) ?? { id: makeId(), name },
-    );
+    const next: Student[] = parsed.map((p) => {
+      const existing = byName.get(p.name);
+      return existing
+        ? { ...existing, name: p.name, gender: p.gender, level: p.level }
+        : { id: makeId(), name: p.name, gender: p.gender, level: p.level };
+    });
     onChange(next);
   };
 
+  const updateStudent = (id: string, patch: Partial<Student>) => {
+    onChange(value.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  };
+
   return (
-    <div className="space-y-2 max-w-xl mx-auto">
-      <div className="text-sm font-medium">
-        학생 이름 (줄바꿈 또는 쉼표로 구분)
+    <div className="space-y-4 max-w-2xl mx-auto">
+      <div className="space-y-2">
+        <div className="text-sm font-medium">
+          학생 입력 (한 줄에 "이름 성별 성적", 줄바꿈 또는 쉼표로 구분)
+        </div>
+        <textarea
+          className="w-full h-48 border border-gray-300 rounded p-2 font-mono text-sm"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={(e) => commitText(e.target.value)}
+          placeholder={"김영준 남 상\n김은희 여 중\n홍길동"}
+        />
+        <div className="text-xs text-gray-600">
+          총 {parsedCount}명 (포커스 해제 시 저장 · 성별/성적 생략 시 남·상으로
+          기본값)
+        </div>
       </div>
-      <textarea
-        className="w-full h-48 border border-gray-300 rounded p-2 font-mono text-sm"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={(e) => commit(e.target.value)}
-        placeholder="홍길동&#10;김철수&#10;이영희"
-      />
-      <div className="text-xs text-gray-600">
-        총 {parseNames(text).length}명 (포커스 해제 시 저장)
-      </div>
+
+      {value.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-sm font-medium">
+            명단 (칩을 클릭하거나 포커스 후 ←→·Enter 로 변경)
+          </div>
+          <div className="border border-gray-300 rounded divide-y divide-gray-200">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-1.5 text-xs text-gray-500 bg-gray-50">
+              <div>이름</div>
+              <div className="w-14 text-center">성별</div>
+              <div className="w-20 text-center">성적</div>
+            </div>
+            {value.map((s) => (
+              <div
+                key={s.id}
+                className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-1.5 items-center"
+              >
+                <div className="text-sm">{s.name}</div>
+                <CycleChip
+                  options={GENDERS}
+                  value={s.gender}
+                  getLabel={(g) => GENDER_LABEL[g]}
+                  getClass={(g) =>
+                    g === "M"
+                      ? "bg-sky-100 text-sky-800 border-sky-300"
+                      : "bg-rose-100 text-rose-800 border-rose-300"
+                  }
+                  onChange={(g) => updateStudent(s.id, { gender: g })}
+                  ariaLabel={`${s.name} 성별`}
+                />
+                <CycleChip
+                  options={LEVELS}
+                  value={s.level}
+                  getLabel={(l) => l}
+                  getClass={(l) =>
+                    l === "상"
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                      : l === "중"
+                        ? "bg-amber-100 text-amber-800 border-amber-300"
+                        : "bg-gray-200 text-gray-700 border-gray-400"
+                  }
+                  onChange={(l) => updateStudent(s.id, { level: l })}
+                  ariaLabel={`${s.name} 성적`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function CycleChip<T extends string>({
+  options,
+  value,
+  getLabel,
+  getClass,
+  onChange,
+  ariaLabel,
+}: {
+  options: readonly T[];
+  value: T;
+  getLabel: (v: T) => string;
+  getClass: (v: T) => string;
+  onChange: (next: T) => void;
+  ariaLabel: string;
+}) {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "Enter") {
+      e.preventDefault();
+      onChange(cycle(options, value, 1));
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      onChange(cycle(options, value, -1));
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(cycle(options, value, 1))}
+      onKeyDown={onKeyDown}
+      aria-label={ariaLabel}
+      className={`min-w-[2.75rem] px-2 py-0.5 text-xs rounded-full border font-medium hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-blue-400 ${getClass(value)}`}
+    >
+      {getLabel(value)}
+    </button>
   );
 }

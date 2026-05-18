@@ -1,6 +1,15 @@
+export type Gender = "M" | "F";
+export const GENDERS: Gender[] = ["M", "F"];
+export const GENDER_LABEL: Record<Gender, string> = { M: "남", F: "여" };
+
+export type Level = "상" | "중" | "하";
+export const LEVELS: Level[] = ["상", "중", "하"];
+
 export type Student = {
   id: string;
   name: string;
+  gender: Gender;
+  level: Level;
 };
 
 export type CellType = "desk" | "empty";

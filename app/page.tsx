@@ -256,7 +256,7 @@ export default function Home() {
                   </button>
                   {editing && (
                     <span className="text-xs text-gray-500">
-                      두 자리를 클릭하면 서로 바뀝니다.
+                      드래그하거나 두 자리를 클릭해 교환하세요.
                     </span>
                   )}
                 </div>

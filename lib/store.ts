@@ -115,10 +115,15 @@ export const useSeatingStore = create<SeatingState & Actions>()(
       storage: createJSONStorage(() => localStorage),
       // Shallow merge keeps new fields (e.g. `confirmed`) initialized for
       // users hydrated from older persisted snapshots.
-      merge: (persisted, current) => ({
-        ...current,
-        ...(persisted as Partial<SeatingState>),
-      }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<SeatingState>;
+        const students = (p.students ?? current.students).map((s) => ({
+          ...s,
+          gender: s.gender ?? "M",
+          level: s.level ?? "상",
+        }));
+        return { ...current, ...p, students };
+      },
     },
   ),
 );
