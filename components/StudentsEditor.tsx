@@ -112,7 +112,7 @@ export function StudentsEditor({ value, onChange }: Props) {
       {value.length > 0 && (
         <div className="space-y-1">
           <div className="text-sm font-medium">
-            명단 (칩을 클릭하거나 포커스 후 ←→·Enter 로 변경)
+            명단 (칩 클릭 또는 ←↑↓→ 이동 · Enter 로 변경)
           </div>
           <div className="border border-gray-300 rounded divide-y divide-gray-200">
             <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-1.5 text-xs text-gray-500 bg-gray-50">
@@ -120,13 +120,16 @@ export function StudentsEditor({ value, onChange }: Props) {
               <div className="w-14 text-center">성별</div>
               <div className="w-20 text-center">성적</div>
             </div>
-            {value.map((s) => (
+            {value.map((s, row) => (
               <div
                 key={s.id}
                 className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-1.5 items-center"
               >
                 <div className="text-sm">{s.name}</div>
                 <CycleChip
+                  row={row}
+                  col={0}
+                  rowCount={value.length}
                   options={GENDERS}
                   value={s.gender}
                   getLabel={(g) => GENDER_LABEL[g]}
@@ -139,6 +142,9 @@ export function StudentsEditor({ value, onChange }: Props) {
                   ariaLabel={`${s.name} 성별`}
                 />
                 <CycleChip
+                  row={row}
+                  col={1}
+                  rowCount={value.length}
                   options={LEVELS}
                   value={s.level}
                   getLabel={(l) => l}
@@ -161,7 +167,19 @@ export function StudentsEditor({ value, onChange }: Props) {
   );
 }
 
+const CHIP_COL_COUNT = 2;
+
+function focusChip(row: number, col: number) {
+  const el = document.querySelector<HTMLButtonElement>(
+    `[data-chip="${row}-${col}"]`,
+  );
+  el?.focus();
+}
+
 function CycleChip<T extends string>({
+  row,
+  col,
+  rowCount,
   options,
   value,
   getLabel,
@@ -169,6 +187,9 @@ function CycleChip<T extends string>({
   onChange,
   ariaLabel,
 }: {
+  row: number;
+  col: number;
+  rowCount: number;
   options: readonly T[];
   value: T;
   getLabel: (v: T) => string;
@@ -177,17 +198,34 @@ function CycleChip<T extends string>({
   ariaLabel: string;
 }) {
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "Enter") {
-      e.preventDefault();
-      onChange(cycle(options, value, 1));
-    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-      e.preventDefault();
-      onChange(cycle(options, value, -1));
+    switch (e.key) {
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        onChange(cycle(options, value, 1));
+        return;
+      case "ArrowRight":
+        e.preventDefault();
+        focusChip(row, (col + 1) % CHIP_COL_COUNT);
+        return;
+      case "ArrowLeft":
+        e.preventDefault();
+        focusChip(row, (col - 1 + CHIP_COL_COUNT) % CHIP_COL_COUNT);
+        return;
+      case "ArrowDown":
+        e.preventDefault();
+        focusChip((row + 1) % rowCount, col);
+        return;
+      case "ArrowUp":
+        e.preventDefault();
+        focusChip((row - 1 + rowCount) % rowCount, col);
+        return;
     }
   };
   return (
     <button
       type="button"
+      data-chip={`${row}-${col}`}
       onClick={() => onChange(cycle(options, value, 1))}
       onKeyDown={onKeyDown}
       aria-label={ariaLabel}
