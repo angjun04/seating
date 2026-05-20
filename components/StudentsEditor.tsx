@@ -101,7 +101,7 @@ export function StudentsEditor({ value, onChange }: Props) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onBlur={(e) => commitText(e.target.value)}
-          placeholder={"김영준 남 상\n김은희 여 중\n홍길동"}
+          placeholder={"김영준 남 상\n홍길동"}
         />
         <div className="text-xs text-gray-600">
           총 {parsedCount}명 (포커스 해제 시 저장 · 성별/성적 생략 시 남·상으로

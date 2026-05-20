@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Arrangement, Layout, Level, Student } from "@/lib/types";
+import type { Arrangement, Layout, Student } from "@/lib/types";
 import { groupColor } from "./LayoutEditor";
 
 type Props = {
@@ -23,11 +23,6 @@ export function SeatingView({
 }: Props) {
   const byId = new Map(students.map((s) => [s.id, s]));
   const front = new Set(frontPriorityIds);
-  const levelDot: Record<Level, string> = {
-    상: "bg-emerald-500",
-    중: "bg-amber-500",
-    하: "bg-gray-400",
-  };
   const [selected, setSelected] = useState<number | null>(null);
   const [dragSrc, setDragSrc] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -173,7 +168,7 @@ export function SeatingView({
               }`}
               title={
                 student
-                  ? `${student.name} · ${student.gender === "M" ? "남" : "여"} · ${student.level}${isFront ? " · 앞자리 우선" : ""}`
+                  ? `${student.name} · ${student.gender === "M" ? "남" : "여"}${isFront ? " · 앞자리 우선" : ""}`
                   : isFront
                     ? "앞자리 우선"
                     : undefined
@@ -189,13 +184,7 @@ export function SeatingView({
                 </span>
               )}
               {student ? (
-                <>
-                  <span
-                    className={`absolute top-1 right-1 w-2 h-2 rounded-full ${levelDot[student.level]}`}
-                    aria-label={`성적 ${student.level}`}
-                  />
-                  {student.name}
-                </>
+                student.name
               ) : (
                 <span className="text-gray-300">빈자리</span>
               )}
