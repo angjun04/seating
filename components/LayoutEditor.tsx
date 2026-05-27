@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CellType, Layout } from "@/lib/types";
+import type { CellType, Gender, Layout } from "@/lib/types";
 
 type Props = {
   value: Layout | null;
@@ -47,6 +47,20 @@ function makeGroups(rows: number, cols: number, prev?: Layout): number[] {
       for (let c = 0; c < Math.min(cols, prev.cols); c++) {
         out[r * cols + c] = prev.groups[r * prev.cols + c] ?? 0;
       }
+    }
+  }
+  return out;
+}
+
+function makeColumnGenders(
+  cols: number,
+  prev?: Layout,
+): Record<number, Gender> {
+  const out: Record<number, Gender> = {};
+  if (prev?.columnGenders) {
+    for (const k of Object.keys(prev.columnGenders)) {
+      const c = Number(k);
+      if (c < cols) out[c] = prev.columnGenders[c];
     }
   }
   return out;
@@ -107,7 +121,18 @@ export function LayoutEditor({ value, onChange }: Props) {
       next[idx] = target;
       if (nextGroups && target === "empty") nextGroups[idx] = 0;
     }
-    onChange({ ...layout, cells: next, groups: nextGroups });
+    // An aisle column has no desks, so drop any 남/여 rule it had.
+    let nextColGenders = layout.columnGenders;
+    if (target === "empty" && nextColGenders && nextColGenders[c]) {
+      nextColGenders = { ...nextColGenders };
+      delete nextColGenders[c];
+    }
+    onChange({
+      ...layout,
+      cells: next,
+      groups: nextGroups,
+      columnGenders: nextColGenders,
+    });
   };
 
   const toggleRowAisle = (r: number) => {
@@ -129,6 +154,7 @@ export function LayoutEditor({ value, onChange }: Props) {
       cells: makeCells(r, c, value ?? undefined),
       groups: makeGroups(r, c, value ?? undefined),
       numGroups: value?.numGroups ?? 0,
+      columnGenders: makeColumnGenders(c, value ?? undefined),
     });
   };
 
@@ -233,8 +259,85 @@ export function LayoutEditor({ value, onChange }: Props) {
       )}
 
       {hasLayout && (
+        <GenderColumnSection layout={layout as Layout} onChange={onChange} />
+      )}
+
+      {hasLayout && (
         <GroupSection layout={layout as Layout} onChange={onChange} />
       )}
+    </div>
+  );
+}
+
+function GenderColumnSection({
+  layout,
+  onChange,
+}: {
+  layout: Layout;
+  onChange: (l: Layout) => void;
+}) {
+  const columnGenders = layout.columnGenders ?? {};
+
+  // 혼합 → 남 → 여 → 혼합
+  const cycleColumn = (c: number) => {
+    const cur = columnGenders[c];
+    const next: Record<number, Gender> = { ...columnGenders };
+    if (!cur) next[c] = "M";
+    else if (cur === "M") next[c] = "F";
+    else delete next[c];
+    onChange({ ...layout, columnGenders: next });
+  };
+
+  const anySet = Object.keys(columnGenders).length > 0;
+
+  return (
+    <div>
+      <div className="text-sm font-medium mb-2 text-center">
+        3) 남자줄·여자줄 지정 (선택) — 열을 눌러 혼합 → 남 → 여
+      </div>
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex gap-1 flex-wrap justify-center">
+          {Array.from({ length: layout.cols }).map((_, c) => {
+            const aisle = isColumnAisle(layout, c);
+            if (aisle) {
+              return (
+                <div
+                  key={c}
+                  className="w-12 h-12 rounded border border-dashed border-gray-300 bg-gray-100 text-[10px] text-gray-400 flex items-center justify-center"
+                  title="복도 열은 지정할 수 없어요"
+                >
+                  복도
+                </div>
+              );
+            }
+            const g = columnGenders[c];
+            const cls =
+              g === "M"
+                ? "bg-sky-100 border-sky-400 text-sky-800"
+                : g === "F"
+                  ? "bg-rose-100 border-rose-400 text-rose-800"
+                  : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50";
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => cycleColumn(c)}
+                className={`w-12 h-12 rounded border flex flex-col items-center justify-center leading-tight ${cls}`}
+                title={`${c + 1}열 — 클릭해 혼합/남/여 변경`}
+              >
+                <span className="text-[10px] opacity-70">{c + 1}열</span>
+                <span className="text-sm font-bold">
+                  {g === "M" ? "남" : g === "F" ? "여" : "혼합"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-xs text-gray-500 text-center">
+          지정한 줄에는 해당 성별 학생만 앉도록 배치합니다.
+          {anySet ? "" : " (지정하지 않으면 모든 줄이 혼합입니다.)"}
+        </div>
+      </div>
     </div>
   );
 }
@@ -367,7 +470,7 @@ function GroupSection({
   return (
     <div>
       <div className="text-sm font-medium mb-2 text-center">
-        3) 모둠 지정 — 활성 모둠 선택 후 책상 영역을 드래그
+        4) 모둠 지정 — 활성 모둠 선택 후 책상 영역을 드래그
       </div>
       <div className="flex flex-col items-center gap-2">
         <div className="flex flex-wrap gap-1.5 items-center justify-center">

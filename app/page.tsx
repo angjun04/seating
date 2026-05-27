@@ -134,6 +134,10 @@ export default function Home() {
       setWarning(
         "사이 안 좋은 쌍을 모두 떨어뜨리는 배치를 찾지 못해 가장 가까운 결과를 보여줍니다.",
       );
+    } else if (result.columnGenderViolations > 0) {
+      setWarning(
+        `남자줄/여자줄 지정을 모두 지키지 못한 자리가 ${result.columnGenderViolations}개 있어요. 해당 줄 성별의 학생 수가 부족하지 않은지 확인해보세요.`,
+      );
     } else if (result.lowLowPairs > 0) {
       setWarning(
         `${metricLabel} '하' 학생끼리 짝꿍이 된 자리가 ${result.lowLowPairs}쌍 남았어요. '하' 학생 수가 많으면 완전 회피가 어렵습니다.`,

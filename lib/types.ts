@@ -34,6 +34,9 @@ export type Layout = {
   // Optional for layouts persisted before this feature existed.
   groups?: number[];
   numGroups?: number;
+  // 남자줄/여자줄: column index -> required gender for that whole column.
+  // Columns absent from the map are mixed (no restriction).
+  columnGenders?: Record<number, Gender>;
 };
 
 export type IncompatiblePair = [string, string];

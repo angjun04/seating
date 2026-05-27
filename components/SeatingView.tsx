@@ -84,6 +84,9 @@ export function SeatingView({
   }, [colAisle, layout.cols]);
   const showBunlabels = blocks.length >= 2;
 
+  const columnGenders = layout.columnGenders ?? {};
+  const hasGenderCols = Object.keys(columnGenders).length > 0;
+
   const colTemplate = colAisle
     .map((a) => (a ? "1rem" : "5rem"))
     .join(" ");
@@ -197,6 +200,30 @@ export function SeatingView({
               }
               return items;
             })()}
+          </div>
+        )}
+
+        {hasGenderCols && (
+          <div
+            className="grid gap-2 px-3 mb-1"
+            style={{ gridTemplateColumns: colTemplate }}
+          >
+            {Array.from({ length: layout.cols }).map((_, c) => {
+              const g = columnGenders[c];
+              if (!g) return <div key={c} />;
+              return (
+                <div
+                  key={c}
+                  className={`text-[10px] font-bold text-center rounded px-1 py-0.5 ${
+                    g === "M"
+                      ? "bg-sky-100 text-sky-700"
+                      : "bg-rose-100 text-rose-700"
+                  }`}
+                >
+                  {g === "M" ? "남자줄" : "여자줄"}
+                </div>
+              );
+            })}
           </div>
         )}
 

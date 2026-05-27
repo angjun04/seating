@@ -1,5 +1,6 @@
 import type {
   Arrangement,
+  Gender,
   IncompatiblePair,
   Layout,
   Level,
@@ -236,6 +237,25 @@ function countBadPairsInGroup(
   return count;
 }
 
+// Count seats whose student's gender doesn't match the 남자줄/여자줄 rule for
+// that column. Columns without a rule never contribute.
+function countColumnGenderViolations(
+  seats: Record<number, string>,
+  cols: number,
+  columnGenders: Record<number, Gender>,
+  byId: Map<string, Student>,
+): number {
+  let v = 0;
+  for (const k of Object.keys(seats)) {
+    const idx = Number(k);
+    const req = columnGenders[idx % cols];
+    if (!req) continue;
+    const st = byId.get(seats[idx]);
+    if (st && st.gender !== req) v++;
+  }
+  return v;
+}
+
 export type GenerateOptions = {
   minDifference?: number; // 0..1; default 0.5
   maxAttempts?: number; // default 500
@@ -290,11 +310,17 @@ export type GenerateResult = {
   repeatGroupmates: number;
   badPairsInGroup: number;
   groupImbalance: number;
+  // 남자줄/여자줄 지정을 어긴 자리 수.
+  columnGenderViolations: number;
 };
 
 function isBetter(a: GenerateResult, b: GenerateResult): boolean {
   if (a.satisfiesIncompatible !== b.satisfiesIncompatible) {
     return a.satisfiesIncompatible;
+  }
+  // 남자줄/여자줄은 교사가 명시한 구조적 제약 — 우선해서 지킨다.
+  if (a.columnGenderViolations !== b.columnGenderViolations) {
+    return a.columnGenderViolations < b.columnGenderViolations;
   }
   // 하-하 짝꿍은 절대 금지 — 다른 무엇보다 우선해서 줄인다.
   if (a.lowLowPairs !== b.lowLowPairs) return a.lowLowPairs < b.lowLowPairs;
@@ -381,6 +407,49 @@ export function generateArrangement(
   }
   const frontSeats = orderedSeats.slice(0, fZone);
   const backSeats = orderedSeats.slice(orderedSeats.length - bZone);
+  const midSeats = orderedSeats.slice(fZone, orderedSeats.length - bZone);
+
+  // 남자줄/여자줄 — column index -> required gender.
+  const columnGenders = layout.columnGenders ?? {};
+  const reqGenderOf = (seat: number): Gender | null =>
+    columnGenders[seat % cols] ?? null;
+
+  // Fill `seatSet` with `pool`, honouring each seat's column gender. Gendered
+  // seats are matched first; leftover students/seats are returned so the caller
+  // can keep placing them (or fall back to ignoring gender).
+  const fillRespectingGender = (
+    target: Record<number, string>,
+    seatSet: number[],
+    pool: Student[],
+  ): { leftoverStudents: Student[]; leftoverSeats: number[] } => {
+    const reqM: number[] = [];
+    const reqF: number[] = [];
+    const mixed: number[] = [];
+    for (const s of shuffle(seatSet)) {
+      const r = reqGenderOf(s);
+      if (r === "M") reqM.push(s);
+      else if (r === "F") reqF.push(s);
+      else mixed.push(s);
+    }
+    const males = shuffle(pool.filter((p) => p.gender === "M"));
+    const females = shuffle(pool.filter((p) => p.gender === "F"));
+    const used = new Set<number>();
+    const drain = (seatArr: number[], stu: Student[]) => {
+      let i = 0;
+      for (; i < seatArr.length && stu.length > 0; i++) {
+        target[seatArr[i]] = stu.shift()!.id;
+        used.add(seatArr[i]);
+      }
+    };
+    drain(reqM, males);
+    drain(reqF, females);
+    const rest = shuffle([...males, ...females]);
+    drain(mixed, rest);
+    const leftoverSeats = [...reqM, ...reqF, ...mixed].filter(
+      (s) => !used.has(s),
+    );
+    return { leftoverStudents: rest, leftoverSeats };
+  };
 
   const confirmedPairs = confirmedSeats
     ? computeNeighborPairs(confirmedSeats, rows, cols)
@@ -396,31 +465,21 @@ export function generateArrangement(
     const seats: Record<number, string> = {};
     for (const [idx, sid] of pinnedEntries) seats[idx] = sid;
 
-    // Seat priority students in their zone; students that don't fit overflow
-    // into the general pool so nobody is left without a desk.
-    const placeZone = (zoneSeats: number[], pool: Student[]): Student[] => {
-      const ss = shuffle(zoneSeats);
-      const st = shuffle(pool);
-      let i = 0;
-      for (; i < st.length && i < ss.length; i++) seats[ss[i]] = st[i].id;
-      return st.slice(i);
-    };
-    const overflowFront = placeZone(frontSeats, frontStudents);
-    const overflowBack = placeZone(backSeats, backStudents);
-
-    const filled = new Set(Object.keys(seats).map(Number));
-    const remainingSeats = shuffle(orderedSeats.filter((s) => !filled.has(s)));
-    const remainingStudents = shuffle([
-      ...restStudents,
-      ...overflowFront,
-      ...overflowBack,
-    ]);
-    for (
-      let i = 0;
-      i < remainingSeats.length && i < remainingStudents.length;
-      i++
-    ) {
-      seats[remainingSeats[i]] = remainingStudents[i].id;
+    // Seat priority students in their zone (gender-aware), then fill the middle
+    // and any zone leftovers with everyone else.
+    const r1 = fillRespectingGender(seats, frontSeats, frontStudents);
+    const r2 = fillRespectingGender(seats, backSeats, backStudents);
+    const r3 = fillRespectingGender(
+      seats,
+      [...midSeats, ...r1.leftoverSeats, ...r2.leftoverSeats],
+      [...restStudents, ...r1.leftoverStudents, ...r2.leftoverStudents],
+    );
+    // Hard fallback — anyone still unplaced (column gender ran short) takes a
+    // remaining seat regardless of gender so nobody is left standing.
+    const leftSeats = shuffle(r3.leftoverSeats);
+    const leftStudents = shuffle(r3.leftoverStudents);
+    for (let i = 0; i < leftSeats.length && i < leftStudents.length; i++) {
+      seats[leftSeats[i]] = leftStudents[i].id;
     }
 
     const ok = validIncompatible(seats, incompatible, rows, cols);
@@ -449,6 +508,12 @@ export function generateArrangement(
     const imbalance = hasGroups
       ? computeGroupImbalance(seats, groups, students, metric)
       : 0;
+    const colGenderViol = countColumnGenderViolations(
+      seats,
+      cols,
+      columnGenders,
+      studentById,
+    );
 
     const candidate: GenerateResult = {
       arrangement: { seats, createdAt: Date.now() },
@@ -460,6 +525,7 @@ export function generateArrangement(
       repeatGroupmates: repeatGroup,
       badPairsInGroup: badInGroup,
       groupImbalance: imbalance,
+      columnGenderViolations: colGenderViol,
     };
 
     if (
@@ -470,7 +536,8 @@ export function generateArrangement(
       genderMismatch === 0 &&
       badInGroup === 0 &&
       repeatGroup === 0 &&
-      imbalance <= 1
+      imbalance <= 1 &&
+      colGenderViol === 0
     ) {
       return candidate;
     }
@@ -489,6 +556,7 @@ export function generateArrangement(
       repeatGroupmates: 0,
       badPairsInGroup: 0,
       groupImbalance: 0,
+      columnGenderViolations: 0,
     }
   );
 }
