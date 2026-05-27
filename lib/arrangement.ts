@@ -3,9 +3,16 @@ import type {
   IncompatiblePair,
   Layout,
   Level,
+  PinnedSeats,
   SeatmatePolicy,
   Student,
+  StudentMetric,
 } from "./types";
+
+// The 상/중/하 value the arrangement should balance on, per the chosen metric.
+function levelOf(s: Student, metric: StudentMetric): Level {
+  return metric === "behavior" ? (s.behavior ?? "중") : s.level;
+}
 
 // Map students to desks in row-major order (front-left first).
 // Used to seed `current` from "last month's arrangement" when a teacher
@@ -113,6 +120,8 @@ function countSeatmateViolations(
   layout: Layout,
   students: Student[],
   policy: SeatmatePolicy,
+  metric: StudentMetric,
+  avoidLowLow: boolean,
 ): { lowLow: number; genderMismatch: number } {
   const byId = new Map(students.map((s) => [s.id, s]));
   let lowLow = 0;
@@ -121,7 +130,13 @@ function countSeatmateViolations(
     const sa = byId.get(a);
     const sb = byId.get(b);
     if (!sa || !sb) continue;
-    if (sa.level === "하" && sb.level === "하") lowLow++;
+    if (
+      avoidLowLow &&
+      levelOf(sa, metric) === "하" &&
+      levelOf(sb, metric) === "하"
+    ) {
+      lowLow++;
+    }
     if (policy === "same" && sa.gender !== sb.gender) genderMismatch++;
     else if (policy === "opposite" && sa.gender === sb.gender) genderMismatch++;
   }
@@ -169,8 +184,11 @@ function computeGroupImbalance(
   seats: Record<number, string>,
   groups: number[],
   students: Student[],
+  metric: StudentMetric,
 ): number {
-  const levelById = new Map<string, Level>(students.map((s) => [s.id, s.level]));
+  const levelById = new Map<string, Level>(
+    students.map((s) => [s.id, levelOf(s, metric)]),
+  );
   const counts = new Map<number, Record<Level, number>>();
   const sizes = new Map<number, number>();
   for (const k of Object.keys(seats)) {
@@ -225,7 +243,42 @@ export type GenerateOptions = {
   // positions AND seatmate (adjacent) pairings.
   confirmedSeats?: Record<number, string> | null;
   seatmatePolicy?: SeatmatePolicy; // default "random"
+  // Which attribute drives group balancing and the 하-하 rule. Default "level".
+  metric?: StudentMetric;
+  // Whether to avoid seating two "하" (by `metric`) students together.
+  avoidLowLow?: boolean; // default true
+  // 맨 뒷자리 우선 학생. Seated in the back rows.
+  backPriorityIds?: string[];
+  // 미리 자리를 지정한 학생 (seatIndex -> studentId). These seats are fixed.
+  pinnedSeats?: PinnedSeats | null;
 };
+
+// Number of seats (front-first ordered) that fall within full rows needed to
+// host `count` priority students. Expanding to whole rows keeps a tidy block.
+function frontZoneSize(ordered: number[], cols: number, count: number): number {
+  if (count <= 0) return 0;
+  let i = 0;
+  while (i < ordered.length && i < count) {
+    const row = Math.floor(ordered[i] / cols);
+    while (i < ordered.length && Math.floor(ordered[i] / cols) === row) i++;
+  }
+  return i;
+}
+
+// Same idea, counting whole rows from the back.
+function backZoneSize(ordered: number[], cols: number, count: number): number {
+  if (count <= 0) return 0;
+  let i = ordered.length - 1;
+  let taken = 0;
+  while (i >= 0 && taken < count) {
+    const row = Math.floor(ordered[i] / cols);
+    while (i >= 0 && Math.floor(ordered[i] / cols) === row) {
+      i--;
+      taken++;
+    }
+  }
+  return ordered.length - 1 - i;
+}
 
 export type GenerateResult = {
   arrangement: Arrangement;
@@ -276,10 +329,14 @@ export function generateArrangement(
   const maxAttempts = opts.maxAttempts ?? 500;
   const confirmedSeats = opts.confirmedSeats ?? null;
   const seatmatePolicy: SeatmatePolicy = opts.seatmatePolicy ?? "random";
+  const metric: StudentMetric = opts.metric ?? "level";
+  const avoidLowLow = opts.avoidLowLow ?? true;
   const { rows, cols, cells } = layout;
   const groups = layout.groups ?? new Array(cells.length).fill(0);
   const numGroups = layout.numGroups ?? 0;
   const hasGroups = numGroups > 0;
+
+  const studentById = new Map(students.map((s) => [s.id, s]));
 
   const deskIndices: number[] = [];
   for (let i = 0; i < cells.length; i++) {
@@ -289,37 +346,41 @@ export function generateArrangement(
   // left-to-right, and the sort is stable so that order is preserved.
   deskIndices.sort((a, b) => Math.floor(a / cols) - Math.floor(b / cols));
 
-  // Limit seats used to the number of students so leftover empties end up at
-  // the back of the room rather than scattered randomly.
-  const activeDeskIndices = deskIndices.slice(0, students.length);
+  // Pinned (사전 지정) seats are fixed before anything else and dropped from
+  // the shuffle pools. Only honour pins that point at a real desk + student.
+  const pinnedEntries = Object.entries(opts.pinnedSeats ?? {})
+    .map(([k, v]) => [Number(k), v] as [number, string])
+    .filter(([idx, sid]) => cells[idx] === "desk" && studentById.has(sid));
+  const pinnedSeatSet = new Set(pinnedEntries.map(([idx]) => idx));
+  const pinnedStudentSet = new Set(pinnedEntries.map(([, sid]) => sid));
 
+  const freeStudents = students.filter((s) => !pinnedStudentSet.has(s.id));
+
+  // Free desks (excluding pinned), front-first, limited to the free-student
+  // count so leftover empties end up at the back of the room.
+  const freeDeskIndices = deskIndices.filter((i) => !pinnedSeatSet.has(i));
+  const orderedSeats = freeDeskIndices.slice(0, freeStudents.length);
+
+  // Front/back priority are mutually exclusive; front wins if somehow both.
   const frontSet = new Set(frontPriorityIds);
-  const frontStudents = students.filter((s) => frontSet.has(s.id));
-  const restStudents = students.filter((s) => !frontSet.has(s.id));
+  const backSet = new Set(opts.backPriorityIds ?? []);
+  const frontStudents = freeStudents.filter((s) => frontSet.has(s.id));
+  const backStudents = freeStudents.filter(
+    (s) => backSet.has(s.id) && !frontSet.has(s.id),
+  );
+  const restStudents = freeStudents.filter(
+    (s) => !frontSet.has(s.id) && !backSet.has(s.id),
+  );
 
-  // Determine "front zone" — enough seats to host front-priority students,
-  // expanded to fill full rows for fairness.
-  const frontCount = frontStudents.length;
-  let frontZoneSize = frontCount;
-  if (frontZoneSize > 0) {
-    let row = 0;
-    let count = 0;
-    while (count < frontCount && row < rows) {
-      for (let c = 0; c < cols; c++) {
-        if (cells[row * cols + c] === "desk") count++;
-      }
-      row++;
-    }
-    frontZoneSize = deskIndices.filter(
-      (idx) => Math.floor(idx / cols) < row,
-    ).length;
+  // Carve the free seats into a front zone and a back zone (whole rows), with
+  // the middle left for everyone else. Clamp so the zones never overlap.
+  const fZone = frontZoneSize(orderedSeats, cols, frontStudents.length);
+  let bZone = backZoneSize(orderedSeats, cols, backStudents.length);
+  if (fZone + bZone > orderedSeats.length) {
+    bZone = Math.max(0, orderedSeats.length - fZone);
   }
-  // Cap to active seats (in case the front rows alone hold more than the
-  // total student count).
-  const frontSeatsCount = Math.min(frontZoneSize, activeDeskIndices.length);
-
-  const frontSeats = activeDeskIndices.slice(0, frontSeatsCount);
-  const otherSeats = activeDeskIndices.slice(frontSeatsCount);
+  const frontSeats = orderedSeats.slice(0, fZone);
+  const backSeats = orderedSeats.slice(orderedSeats.length - bZone);
 
   const confirmedPairs = confirmedSeats
     ? computeNeighborPairs(confirmedSeats, rows, cols)
@@ -333,21 +394,33 @@ export function generateArrangement(
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const seats: Record<number, string> = {};
+    for (const [idx, sid] of pinnedEntries) seats[idx] = sid;
 
-    const shuffledFront = shuffle(frontStudents);
-    const shuffledRest = shuffle(restStudents);
+    // Seat priority students in their zone; students that don't fit overflow
+    // into the general pool so nobody is left without a desk.
+    const placeZone = (zoneSeats: number[], pool: Student[]): Student[] => {
+      const ss = shuffle(zoneSeats);
+      const st = shuffle(pool);
+      let i = 0;
+      for (; i < st.length && i < ss.length; i++) seats[ss[i]] = st[i].id;
+      return st.slice(i);
+    };
+    const overflowFront = placeZone(frontSeats, frontStudents);
+    const overflowBack = placeZone(backSeats, backStudents);
 
-    const fs = shuffle(frontSeats);
-    for (let i = 0; i < shuffledFront.length && i < fs.length; i++) {
-      seats[fs[i]] = shuffledFront[i].id;
-    }
-    const restPool = shuffledRest.slice();
-    for (let i = shuffledFront.length; i < fs.length && restPool.length; i++) {
-      seats[fs[i]] = restPool.shift()!.id;
-    }
-    const os = shuffle(otherSeats);
-    for (let i = 0; i < os.length && restPool.length; i++) {
-      seats[os[i]] = restPool.shift()!.id;
+    const filled = new Set(Object.keys(seats).map(Number));
+    const remainingSeats = shuffle(orderedSeats.filter((s) => !filled.has(s)));
+    const remainingStudents = shuffle([
+      ...restStudents,
+      ...overflowFront,
+      ...overflowBack,
+    ]);
+    for (
+      let i = 0;
+      i < remainingSeats.length && i < remainingStudents.length;
+      i++
+    ) {
+      seats[remainingSeats[i]] = remainingStudents[i].id;
     }
 
     const ok = validIncompatible(seats, incompatible, rows, cols);
@@ -362,6 +435,8 @@ export function generateArrangement(
       layout,
       students,
       seatmatePolicy,
+      metric,
+      avoidLowLow,
     );
     let repeatGroup = 0;
     if (confirmedGroupPairs && confirmedGroupPairs.size > 0) {
@@ -372,7 +447,7 @@ export function generateArrangement(
       ? countBadPairsInGroup(seats, groups, incompatible)
       : 0;
     const imbalance = hasGroups
-      ? computeGroupImbalance(seats, groups, students)
+      ? computeGroupImbalance(seats, groups, students, metric)
       : 0;
 
     const candidate: GenerateResult = {

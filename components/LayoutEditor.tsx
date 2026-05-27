@@ -179,7 +179,8 @@ export function LayoutEditor({ value, onChange }: Props) {
       {hasLayout && (
         <div>
           <div className="text-sm font-medium mb-2 text-center">
-            2) 책상이 없는 칸은 클릭, 행/열 머리는 통째로 복도 토글
+            2) 책상 없는 칸은 클릭해 비우고, 행·열 머리를 누르면 그 줄 전체가
+            복도(자리 제외)가 됩니다
           </div>
           <div className="flex flex-col items-center">
             <div className="text-xs text-gray-500 mb-2">↑ 교실 앞 (칠판)</div>
@@ -200,8 +201,8 @@ export function LayoutEditor({ value, onChange }: Props) {
                     onClick={() => toggleColumnAisle(c)}
                     title={
                       aisle
-                        ? "이 열 전체 복도 — 클릭해 책상으로"
-                        : "이 열 전체를 복도로"
+                        ? "이 열 전체가 복도예요 — 클릭하면 다시 책상"
+                        : "이 열 전체를 복도(자리 제외)로"
                     }
                     className={`h-6 text-[10px] rounded border ${
                       aisle
@@ -256,7 +257,9 @@ function RowGroup({
         type="button"
         onClick={() => onToggleRow(r)}
         title={
-          aisle ? "이 행 전체 복도 — 클릭해 책상으로" : "이 행 전체를 복도로"
+          aisle
+            ? "이 행 전체가 복도예요 — 클릭하면 다시 책상"
+            : "이 행 전체를 복도(자리 제외)로"
         }
         className={`w-8 text-[10px] rounded border ${
           aisle
@@ -391,6 +394,13 @@ function GroupSection({
           })}
           <button
             type="button"
+            onClick={addGroup}
+            className="px-2.5 py-1 text-xs rounded border bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
+          >
+            + 모둠 추가
+          </button>
+          <button
+            type="button"
             onClick={() => setActive(0)}
             className={`px-2.5 py-1 text-xs rounded border font-medium bg-white text-gray-700 ${
               active === 0 ? "border-gray-500 ring-2 ring-offset-1 ring-gray-400" : "border-gray-300"
@@ -398,13 +408,6 @@ function GroupSection({
             title="지우개 — 드래그로 모둠 지정 해제"
           >
             지우개
-          </button>
-          <button
-            type="button"
-            onClick={addGroup}
-            className="px-2.5 py-1 text-xs rounded border bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
-          >
-            + 모둠 추가
           </button>
           <button
             type="button"

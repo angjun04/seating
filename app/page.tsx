@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSeatingStore } from "@/lib/store";
 import {
   generateArrangement,
@@ -13,39 +13,97 @@ import { SeatingView } from "@/components/SeatingView";
 import {
   SEATMATE_POLICIES,
   SEATMATE_POLICY_LABEL,
+  STUDENT_METRIC_LABEL,
 } from "@/lib/types";
 
 type Tab = "arrange" | "layout" | "students" | "constraints";
+
+// Synthesised beeps for the countdown — no audio assets, and only ever called
+// from a user gesture so autoplay policies are satisfied.
+let audioCtx: AudioContext | null = null;
+function playTone(freq: number, durationMs: number) {
+  if (typeof window === "undefined") return;
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return;
+    if (!audioCtx) audioCtx = new Ctx();
+    const ctx = audioCtx;
+    if (ctx.state === "suspended") void ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const now = ctx.currentTime;
+    const end = now + durationMs / 1000;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(end);
+  } catch {
+    // Audio unavailable — silently skip.
+  }
+}
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("arrange");
   const [warning, setWarning] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  // null = idle, 3/2/1 = counting, 0 = "시작!" flash.
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const {
     layout,
     students,
     frontPriorityIds,
+    backPriorityIds,
     incompatiblePairs,
+    pinnedSeats,
     current,
     confirmed,
     seatmatePolicy,
+    useLevel,
+    useBehavior,
+    balanceMetric,
+    avoidLowLowSeatmates,
+    soundEnabled,
     setLayout,
     setStudents,
     toggleFrontPriority,
+    toggleBackPriority,
     addIncompatiblePair,
     removeIncompatiblePair,
+    setPinnedSeat,
+    removePinnedSeat,
+    clearPinnedSeats,
     setCurrent,
     pushHistory,
     confirmCurrent,
     clearConfirmed,
     setSeatmatePolicy,
+    setUseLevel,
+    setUseBehavior,
+    setBalanceMetric,
+    setAvoidLowLowSeatmates,
+    setSoundEnabled,
     resetAll,
   } = useSeatingStore();
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Clear any pending countdown timers on unmount.
+  useEffect(() => {
+    const t = timers.current;
+    return () => t.forEach(clearTimeout);
   }, []);
 
   // Initial tab choice — runs once after mount based on current data.
@@ -59,30 +117,17 @@ export default function Home() {
   }, [mounted]);
 
   if (!mounted) {
-    return (
-      <div className="p-8 text-sm text-gray-500">로딩중...</div>
-    );
+    return <div className="p-8 text-sm text-gray-500">로딩중...</div>;
   }
 
   const deskCount = layout?.cells.filter((c) => c === "desk").length ?? 0;
   const canArrange =
     layout !== null && students.length > 0 && students.length <= deskCount;
+  const metricLabel = STUDENT_METRIC_LABEL[balanceMetric];
 
-  const onGenerate = () => {
-    setWarning(null);
-    setEditing(false);
-    if (!layout) return;
-    const result = generateArrangement(
-      layout,
-      students,
-      frontPriorityIds,
-      incompatiblePairs,
-      current,
-      {
-        confirmedSeats: confirmed?.seats ?? null,
-        seatmatePolicy,
-      },
-    );
+  const applyResult = (
+    result: ReturnType<typeof generateArrangement>,
+  ) => {
     setCurrent(result.arrangement);
     pushHistory(result.arrangement);
     if (!result.satisfiesIncompatible) {
@@ -91,7 +136,7 @@ export default function Home() {
       );
     } else if (result.lowLowPairs > 0) {
       setWarning(
-        `성적 '하' 학생끼리 짝꿍이 된 자리가 ${result.lowLowPairs}쌍 남았어요. '하' 학생 수가 많으면 완전 회피가 어렵습니다.`,
+        `${metricLabel} '하' 학생끼리 짝꿍이 된 자리가 ${result.lowLowPairs}쌍 남았어요. '하' 학생 수가 많으면 완전 회피가 어렵습니다.`,
       );
     } else if (result.genderMismatches > 0) {
       setWarning(
@@ -118,6 +163,56 @@ export default function Home() {
     }
   };
 
+  const runCountdown = (onDone: () => void) => {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+    const tick = (n: number) => {
+      if (soundEnabled) playTone(523 + (3 - n) * 64, 180);
+    };
+    setCountdown(3);
+    tick(3);
+    timers.current.push(
+      setTimeout(() => {
+        setCountdown(2);
+        tick(2);
+      }, 700),
+      setTimeout(() => {
+        setCountdown(1);
+        tick(1);
+      }, 1400),
+      setTimeout(() => {
+        setCountdown(0);
+        if (soundEnabled) playTone(880, 420);
+      }, 2100),
+      setTimeout(() => {
+        setCountdown(null);
+        onDone();
+      }, 2750),
+    );
+  };
+
+  const onGenerate = () => {
+    if (!layout || countdown !== null) return;
+    setWarning(null);
+    setEditing(false);
+    const result = generateArrangement(
+      layout,
+      students,
+      frontPriorityIds,
+      incompatiblePairs,
+      current,
+      {
+        confirmedSeats: confirmed?.seats ?? null,
+        seatmatePolicy,
+        metric: balanceMetric,
+        avoidLowLow: avoidLowLowSeatmates,
+        backPriorityIds,
+        pinnedSeats,
+      },
+    );
+    runCountdown(() => applyResult(result));
+  };
+
   const confirmedSameAsCurrent =
     !!current &&
     !!confirmed &&
@@ -128,6 +223,18 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {countdown !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div
+            key={countdown}
+            className="animate-count-pop font-extrabold text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
+            style={{ fontSize: countdown === 0 ? "5.5rem" : "9rem" }}
+          >
+            {countdown === 0 ? "시작!" : countdown}
+          </div>
+        </div>
+      )}
+
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-lg font-semibold">교실 자리 배치</h1>
@@ -171,10 +278,19 @@ export default function Home() {
               <button
                 type="button"
                 onClick={onGenerate}
-                disabled={!canArrange}
+                disabled={!canArrange || countdown !== null}
                 className="px-5 py-2 bg-blue-600 text-white rounded-md font-medium shadow-sm hover:bg-blue-700 disabled:bg-gray-300 disabled:shadow-none transition"
               >
                 새 배치 생성
+              </button>
+              <button
+                type="button"
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                aria-pressed={soundEnabled}
+                className="text-sm px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                title={soundEnabled ? "효과음 끄기" : "효과음 켜기"}
+              >
+                {soundEnabled ? "🔊 효과음 켜짐" : "🔇 효과음 꺼짐"}
               </button>
               <div className="text-sm text-gray-600">
                 학생 {students.length}명 / 책상 {deskCount}석
@@ -205,7 +321,8 @@ export default function Home() {
                 ))}
               </div>
               <span className="text-xs text-gray-500">
-                · 성적 '하' 끼리는 짝꿍이 되지 않게 합니다
+                · 배치 기준: {metricLabel}
+                {avoidLowLowSeatmates ? " · ‘하’끼리 짝꿍 회피 켜짐" : ""}
               </span>
             </div>
             {!canArrange && (
@@ -335,17 +452,36 @@ export default function Home() {
         )}
 
         {tab === "students" && (
-          <StudentsEditor value={students} onChange={setStudents} />
+          <StudentsEditor
+            value={students}
+            onChange={setStudents}
+            useLevel={useLevel}
+            useBehavior={useBehavior}
+            balanceMetric={balanceMetric}
+            onSetUseLevel={setUseLevel}
+            onSetUseBehavior={setUseBehavior}
+            onSetBalanceMetric={setBalanceMetric}
+          />
         )}
 
         {tab === "constraints" && (
           <ConstraintsEditor
             students={students}
+            layout={layout}
             frontPriorityIds={frontPriorityIds}
+            backPriorityIds={backPriorityIds}
             incompatiblePairs={incompatiblePairs}
+            pinnedSeats={pinnedSeats}
+            balanceMetric={balanceMetric}
+            avoidLowLowSeatmates={avoidLowLowSeatmates}
             onToggleFront={toggleFrontPriority}
+            onToggleBack={toggleBackPriority}
             onAddPair={addIncompatiblePair}
             onRemovePair={removeIncompatiblePair}
+            onSetPinnedSeat={setPinnedSeat}
+            onRemovePinnedSeat={removePinnedSeat}
+            onClearPinnedSeats={clearPinnedSeats}
+            onSetAvoidLowLow={setAvoidLowLowSeatmates}
           />
         )}
       </main>
