@@ -10,11 +10,7 @@ import { LayoutEditor } from "@/components/LayoutEditor";
 import { StudentsEditor } from "@/components/StudentsEditor";
 import { ConstraintsEditor } from "@/components/ConstraintsEditor";
 import { SeatingView } from "@/components/SeatingView";
-import {
-  SEATMATE_POLICIES,
-  SEATMATE_POLICY_LABEL,
-  STUDENT_METRIC_LABEL,
-} from "@/lib/types";
+import { SEATMATE_POLICIES, SEATMATE_POLICY_LABEL } from "@/lib/types";
 
 type Tab = "arrange" | "layout" | "students" | "constraints";
 
@@ -123,7 +119,6 @@ export default function Home() {
   const deskCount = layout?.cells.filter((c) => c === "desk").length ?? 0;
   const canArrange =
     layout !== null && students.length > 0 && students.length <= deskCount;
-  const metricLabel = STUDENT_METRIC_LABEL[balanceMetric];
 
   const applyResult = (
     result: ReturnType<typeof generateArrangement>,
@@ -140,7 +135,7 @@ export default function Home() {
       );
     } else if (result.lowLowPairs > 0) {
       setWarning(
-        `${metricLabel} '하' 학생끼리 짝꿍이 된 자리가 ${result.lowLowPairs}쌍 남았어요. '하' 학생 수가 많으면 완전 회피가 어렵습니다.`,
+        `짝꿍 회피 규칙을 모두 지키지 못한 자리가 ${result.lowLowPairs}쌍 남았어요. 해당 학생 수가 많으면 완전 회피가 어렵습니다.`,
       );
     } else if (result.genderMismatches > 0) {
       setWarning(
@@ -324,10 +319,6 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              <span className="text-xs text-gray-500">
-                · 배치 기준: {metricLabel}
-                {avoidLowLowSeatmates ? " · ‘하’끼리 짝꿍 회피 켜짐" : ""}
-              </span>
             </div>
             {!canArrange && (
               <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
