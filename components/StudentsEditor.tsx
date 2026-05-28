@@ -27,7 +27,12 @@ function makeId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-type Parsed = { name: string; gender: Gender; level: Level };
+type Parsed = {
+  name: string;
+  gender: Gender;
+  level: Level;
+  behavior: Level;
+};
 
 function parseToken(token: string): { gender?: Gender; level?: Level } {
   const t = token.trim();
@@ -37,6 +42,8 @@ function parseToken(token: string): { gender?: Gender; level?: Level } {
   return {};
 }
 
+// 한 줄 포맷: "이름 성별 성적 생활태도".
+// 상/중/하 토큰을 등장 순서대로 모아, 1개면 성적·생활태도 모두 그 값으로 맞춘다.
 function parseLine(line: string): Parsed | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -44,13 +51,15 @@ function parseLine(line: string): Parsed | null {
   const name = parts[0];
   if (!name) return null;
   let gender: Gender = "M";
-  let level: Level = "상";
+  const levels: Level[] = [];
   for (const p of parts.slice(1)) {
     const r = parseToken(p);
     if (r.gender) gender = r.gender;
-    if (r.level) level = r.level;
+    if (r.level) levels.push(r.level);
   }
-  return { name, gender, level };
+  const level: Level = levels[0] ?? "상";
+  const behavior: Level = levels[1] ?? level;
+  return { name, gender, level, behavior };
 }
 
 function parseStudents(text: string): Parsed[] {
@@ -62,7 +71,13 @@ function parseStudents(text: string): Parsed[] {
 
 function studentsToText(students: Student[]): string {
   return students
-    .map((s) => `${s.name} ${GENDER_LABEL[s.gender]} ${s.level}`)
+    .map((s) => {
+      const behavior = s.behavior ?? s.level;
+      // 두 값이 같으면 하나만 적어 1-토큰 규칙으로 라운드트립되게 한다.
+      return behavior === s.level
+        ? `${s.name} ${GENDER_LABEL[s.gender]} ${s.level}`
+        : `${s.name} ${GENDER_LABEL[s.gender]} ${s.level} ${behavior}`;
+    })
     .join("\n");
 }
 
@@ -123,13 +138,19 @@ export function StudentsEditor({
     const next: Student[] = parsed.map((p) => {
       const existing = byName.get(p.name);
       return existing
-        ? { ...existing, name: p.name, gender: p.gender, level: p.level }
+        ? {
+            ...existing,
+            name: p.name,
+            gender: p.gender,
+            level: p.level,
+            behavior: p.behavior,
+          }
         : {
             id: makeId(),
             name: p.name,
             gender: p.gender,
             level: p.level,
-            behavior: "중",
+            behavior: p.behavior,
           };
     });
     onChange(next);
@@ -194,18 +215,19 @@ export function StudentsEditor({
 
       <div className="space-y-2">
         <div className="text-sm font-medium">
-          학생 입력 (한 줄에 &quot;이름 성별 성적&quot;, 줄바꿈 또는 쉼표로 구분)
+          학생 입력 (한 줄에 &quot;이름 성별 성적 생활태도&quot;, 줄바꿈 또는
+          쉼표로 구분)
         </div>
         <textarea
           className="w-full h-48 border border-gray-300 rounded p-2 font-mono text-sm"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onBlur={(e) => commitText(e.target.value)}
-          placeholder={"김영준 남 상\n홍길동"}
+          placeholder={"김영준 남 상 중\n홍길동 여 중"}
         />
         <div className="text-xs text-gray-600">
-          총 {parsedCount}명 (포커스 해제 시 저장 · 성별/성적 생략 시 남·상으로
-          기본값 · 생활태도는 아래 표에서 칩으로 지정)
+          총 {parsedCount}명 · 포커스 해제 시 저장 · 상/중/하를 하나만 적으면
+          성적·생활태도 모두 그 값으로 적용 (예: &quot;김영준 남 중&quot; → 성적·생활태도 모두 중)
         </div>
       </div>
 
