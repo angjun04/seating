@@ -10,6 +10,7 @@ import { LayoutEditor } from "@/components/LayoutEditor";
 import { StudentsEditor } from "@/components/StudentsEditor";
 import { ConstraintsEditor } from "@/components/ConstraintsEditor";
 import { SeatingView } from "@/components/SeatingView";
+import { SeatingCode } from "@/components/SeatingCode";
 import { SEATMATE_POLICIES, SEATMATE_POLICY_LABEL } from "@/lib/types";
 
 type Tab = "arrange" | "layout" | "students" | "constraints";
@@ -438,6 +439,21 @@ export default function Home() {
                   }
                 />
               </>
+            )}
+            {layout && (
+              <SeatingCode
+                layout={layout}
+                students={students}
+                current={current}
+                onImport={(nextLayout, nextStudents, seats) => {
+                  // 코드 내용으로 책상·명단·자리를 한 번에 교체한다.
+                  setWarning(null);
+                  setEditing(false);
+                  setLayout(nextLayout);
+                  setStudents(nextStudents);
+                  setCurrent({ seats, createdAt: Date.now() });
+                }}
+              />
             )}
           </div>
         )}
